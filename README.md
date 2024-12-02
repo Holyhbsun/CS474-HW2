@@ -40,13 +40,13 @@ The following are the new features implemented in this project.
 ### Object Design
 - **Class**: Represents the blueprint of an object in the DSL.
 - **SuperClass**: Allows possible inheritance.
-- **Methods*: A list of Method instances defining the name, params used in the class, and the actual operations used in this method.
-- **Vars*: A list of ClassVar instances representing the variables used in the class.
-- **CreateNew*: Creates a new instance of a class.
-- **CreateInstance*: Create instances by getting the contents and the name of the clazz.
-- **Invoke*: Invoke a method defined within a class on a specific instance.
-- **ClassVar*: Represents a variable or attribute of a class.
-- **Vartype*: Defines the types of variables allowed in the DSL.
+- **Methods**: A list of Method instances defining the name, params used in the class, and the actual operations used in this method.
+- **Vars**: A list of ClassVar instances representing the variables used in the class.
+- **CreateNew**: Creates a new instance of a class.
+- **CreateInstance**: Create instances by getting the contents and the name of the clazz.
+- **Invoke**: Invoke a method defined within a class on a specific instance.
+- **ClassVar**: Represents a variable or attribute of a class.
+- **Vartype**: Defines the types of variables allowed in the DSL.
 
 ### Evaluation
 - **evaluateMethod**: Finds the method by the method name and then evaluates its body within the given scope.

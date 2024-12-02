@@ -246,19 +246,20 @@ case class FuzzySetClass(
 
 case class FuzzySetVar(name: String, varType: VarType, elements: List[Element]) extends FuzzyClassOperation
 
+import scala.collection.mutable
 object FuzzyLogicDSL {
-  var gates: Map[String, FuzzyGate] = Map()
-  var inputScope: Map[String, Map[String, Double]] = Map()
-  var classInstances: Map[String, CreateNew] = Map()
-  var instanceScope: Map[String, Map[String, FuzzyValue]] = Map() // Scope for class instances
+  val gates: mutable.Map[String, FuzzyGate] = mutable.Map()
+  val inputScope: mutable.Map[String, mutable.Map[String, Double]] = mutable.Map()
+  val classInstances: mutable.Map[String, CreateNew] = mutable.Map()
+  val instanceScope: mutable.Map[String, mutable.Map[String, FuzzyValue]] = mutable.Map() // Scope for class instances
 
   def Assign(gate: FuzzyGate): Unit = {
     gates += (gate.name -> gate)
   }
 
   def AssignInput(gateName: String, input: Input, value: Double): Unit = {
-    val currentScope = inputScope.getOrElse(gateName, Map())
-    inputScope += (gateName -> (currentScope + (input.name -> value)))
+    val currentScope = inputScope.getOrElseUpdate(gateName, mutable.Map())
+    currentScope += (input.name -> value)
   }
 
   def Scope(gate: FuzzyGate, inputAssignment: (Input, Double)): Unit = {
@@ -267,14 +268,14 @@ object FuzzyLogicDSL {
 
   def ScopeInstance(instance: CreateNew, variable: String, value: FuzzyValue): Unit = {
     val instanceName = instance.clazz.name
-    val currentScope = instanceScope.getOrElse(instanceName, Map())
-    instanceScope += (instanceName -> (currentScope + (variable -> value)))
+    val currentScope = instanceScope.getOrElseUpdate(instanceName, mutable.Map())
+    currentScope += (variable -> value)
   }
 
   def TestGate(gateName: String, expectedResult: Double): Boolean = {
     val gate = gates.getOrElse(gateName, throw new IllegalArgumentException(s"Gate $gateName not found"))
     val inputValues = inputScope.getOrElse(gateName, throw new IllegalArgumentException(s"Input values for $gateName not found"))
-    val result = FuzzyGateEvaluator.evaluate(gate, inputValues)
+    val result = FuzzyGateEvaluator.evaluate(gate, inputValues.toMap)
     result == expectedResult
   }
 
@@ -285,8 +286,7 @@ object FuzzyLogicDSL {
   }
 
   def Invoke(instance: CreateNew, methodName: String, argNames: List[String]): FuzzyValue = {
-    val scope = instanceScope.getOrElse(instance.clazz.name, Map())
-
+    val scope = instanceScope.getOrElse(instance.clazz.name, throw new IllegalArgumentException(s"Instance scope for ${instance.clazz.name} not found"))
     val args: Map[String, FuzzyValue] = argNames.map { argName =>
       scope.get(argName) match {
         case Some(value) => argName -> value
