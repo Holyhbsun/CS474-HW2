@@ -1,5 +1,8 @@
-sealed trait FuzzyClassOperation
+object Implicits {
+  implicit def classToOptionClass(c: Class): Option[Class] = Some(c)
+}
 
+sealed trait FuzzyClassOperation
 case class Class(
                   name: String,
                   superClass: Option[Class] = None,
@@ -10,19 +13,18 @@ case class Class(
 case class ClassVar(name: String, varType: VarType) extends FuzzyClassOperation
 case class Method(name: String, params: List[Parameter], body: FuzzyOperation) extends FuzzyClassOperation
 case class Parameter(name: String, paramType: String)
-case class CreateNew(clazz: Class)
+case class CreateNew(clazz: Class, instanceName: String)
 
 sealed trait VarType
 case object StringType extends VarType
 case object DoubleType extends VarType
 case object SetType extends VarType
 
-sealed trait FuzzyValue
+sealed trait FuzzyOperation
+sealed trait FuzzyValue extends FuzzyOperation
 case class FuzzyNumber(value: Double) extends FuzzyValue
 case class FuzzyString(value: String) extends FuzzyValue
 case class FuzzySetValue(set: FuzzySet) extends FuzzyValue
-
-sealed trait FuzzyOperation
 
 sealed trait FuzzyGateOperation extends FuzzyOperation
 
@@ -68,6 +70,7 @@ object FuzzyGateEvaluator {
 
   private def evaluateMethodBody(body: FuzzyOperation, scope: Map[String, FuzzyValue]): FuzzyValue = {
     body match {
+      case value: FuzzyValue => value
       case op: FuzzyGateOperation => FuzzyNumber(evaluateGateOperation(op, scope))
       case op: FuzzySetOperation => FuzzySetValue(evaluateSetOperation(op, scope))
       case AlphaCut(setOp, alphaOp) =>
@@ -134,7 +137,6 @@ case class Union(setA: FuzzySetOperation, setB: FuzzySetOperation) extends Fuzzy
 case class Intersection(setA: FuzzySetOperation, setB: FuzzySetOperation) extends FuzzySetOperation
 case class Complement(setA: FuzzySetOperation) extends FuzzySetOperation
 
-// Set Operations
 case class Element(name: String, value: Double)
 
 case class FuzzySet(name: String, elements: List[Element]) {
@@ -224,7 +226,7 @@ object FuzzySetOperations {
     val newElements = allKeys.map { key =>
       val valueA = mapA.getOrElse(key, 0.0)
       val valueB = mapB.getOrElse(key, 0.0)
-      Element(key, round(Math.max(valueA, valueB) - Math.min(valueA, valueB)))
+      Element(key, round(Math.abs(valueA - valueB)))
     }.toList
 
     FuzzySet(s"${setA.name}_XOR_${setB.name}", newElements)
@@ -236,15 +238,6 @@ object FuzzySetOperations {
     }
   }
 }
-
-case class FuzzySetClass(
-                          name: String,
-                          superClass: Option[Class] = None,
-                          methods: List[Method] = Nil,
-                          vars: List[ClassVar] = Nil
-                        ) extends FuzzyClassOperation
-
-case class FuzzySetVar(name: String, varType: VarType, elements: List[Element]) extends FuzzyClassOperation
 
 import scala.collection.mutable
 object FuzzyLogicDSL {
@@ -267,7 +260,7 @@ object FuzzyLogicDSL {
   }
 
   def ScopeInstance(instance: CreateNew, variable: String, value: FuzzyValue): Unit = {
-    val instanceName = instance.clazz.name
+    val instanceName = instance.instanceName
     val currentScope = instanceScope.getOrElseUpdate(instanceName, mutable.Map())
     currentScope += (variable -> value)
   }
@@ -279,18 +272,18 @@ object FuzzyLogicDSL {
     result == expectedResult
   }
 
-  def CreateInstance(clazz: Class): CreateNew = {
-    val instance = CreateNew(clazz)
-    classInstances += (clazz.name -> instance)
+  def CreateInstance(clazz: Class, instanceName: String): CreateNew = {
+    val instance = CreateNew(clazz, instanceName)
+    classInstances += (instanceName -> instance)
     instance
   }
 
   def Invoke(instance: CreateNew, methodName: String, argNames: List[String]): FuzzyValue = {
-    val scope = instanceScope.getOrElse(instance.clazz.name, throw new IllegalArgumentException(s"Instance scope for ${instance.clazz.name} not found"))
+    val scope = instanceScope.getOrElse(instance.instanceName, throw new IllegalArgumentException(s"Instance scope for ${instance.instanceName} not found"))
     val args: Map[String, FuzzyValue] = argNames.map { argName =>
       scope.get(argName) match {
         case Some(value) => argName -> value
-        case None => throw new IllegalArgumentException(s"Input $argName is not defined in the scope for instance ${instance.clazz.name}")
+        case None => throw new IllegalArgumentException(s"Input $argName is not defined in the scope for instance ${instance.instanceName}")
       }
     }.toMap
 
@@ -299,42 +292,29 @@ object FuzzyLogicDSL {
 }
 
 object Main extends App {
+  import Implicits._
   import FuzzyLogicDSL._
-  val baseSetClass = Class(
-    name = "BaseSet",
+
+  val nestedClass = Class(
+    name = "Nested",
     methods = List(
       Method(
-        name = "unionMethod",
-        params = List(Parameter("setA", "set"), Parameter("setB", "set")),
-        body = Union(SetInput("setA"), SetInput("setB"))
-      ),
-      Method(
-        name = "intersectionMethod",
-        params = List(Parameter("setA", "set"), Parameter("setB", "set")),
-        body = Intersection(SetInput("setA"), SetInput("setB"))
+        name = "nestedMethod",
+        params = List(Parameter("p", "double")),
+        body = MULT(Input("p"), Input("p"))
       )
-    ),
-    vars = List(ClassVar("v1", SetType))
+    )
   )
 
-  // Create an instance of the base set class
-  val baseSetInstance = CreateInstance(baseSetClass)
+  val baseClass = Class(
+    name = "Base",
+    superClass = Some(nestedClass)
+  )
 
-  // Using ScopeInstance for the instance variables
-  ScopeInstance(baseSetInstance, "setA", FuzzySetValue(FuzzySet("setA", List(Element("x1", 0.5), Element("x2", 0.7)))))
-  ScopeInstance(baseSetInstance, "setB", FuzzySetValue(FuzzySet("setB", List(Element("x1", 0.3), Element("x3", 0.8)))))
+  val instance = CreateInstance(baseClass, "mainInstance")
 
-  // Invoke unionMethod on the baseSetInstance
-  val unionResult = Invoke(baseSetInstance, methodName = "unionMethod", argNames = List("setA", "setB"))
-  unionResult match {
-    case FuzzySetValue(set) => println(s"Result of invoking unionMethod on BaseSet instance: ${set.elements}")
-    case _ => println("Unexpected result type")
-  }
+  ScopeInstance(instance, "p", FuzzyNumber(0.5))
 
-  // Invoke intersectionMethod on the baseSetInstance
-  val intersectionResult = Invoke(baseSetInstance, methodName = "intersectionMethod", argNames = List("setA", "setB"))
-  intersectionResult match {
-    case FuzzySetValue(set) => println(s"Result of invoking intersectionMethod on BaseSet instance: ${set.elements}")
-    case _ => println("Unexpected result type")
-  }
+  val result = Invoke(instance, methodName = "nestedMethod", argNames = List("p"))
+  println(s"Result: $result") // Should print FuzzyNumber(0.25)
 }

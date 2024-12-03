@@ -19,7 +19,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       ),
       vars = List(ClassVar("v1", DoubleType))
     )
-    val instance = CreateInstance(baseClass)
+    val instance = CreateInstance(baseClass, "instanceAdd")
 
     ScopeInstance(instance, "p1", FuzzyNumber(0.4))
     ScopeInstance(instance, "p2", FuzzyNumber(0.5))
@@ -39,7 +39,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
         )
       )
     )
-    val instance = CreateInstance(baseClass)
+    val instance = CreateInstance(baseClass, "instanceMult")
 
     ScopeInstance(instance, "p1", FuzzyNumber(0.6))
     ScopeInstance(instance, "p2", FuzzyNumber(0.5))
@@ -59,7 +59,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
         )
       )
     )
-    val instance = CreateInstance(baseClass)
+    val instance = CreateInstance(baseClass, "instanceXor")
 
     ScopeInstance(instance, "p1", FuzzyNumber(0.7))
     ScopeInstance(instance, "p2", FuzzyNumber(0.4))
@@ -68,25 +68,69 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
     result shouldEqual FuzzyNumber(0.3)
   }
 
-  it should "correctly evaluate composite gate operation in a nested class method" in {
+  it should "correctly invoke methods from nested superclasses" in {
     val nestedClass = Class(
       name = "Nested",
       methods = List(
         Method(
-          name = "compositeMethod",
-          params = List(Parameter("p1", "double"), Parameter("p2", "double"), Parameter("p3", "double")),
-          body = ADD(MULT(Input("p1"), Input("p2")), Input("p3"))
+          name = "nestedMethod",
+          params = List(Parameter("p1", "double"), Parameter("p2", "double")),
+          body = MULT(Input("p1"), Input("p2"))
         )
       )
     )
-    val instance = CreateInstance(nestedClass)
 
-    ScopeInstance(instance, "p1", FuzzyNumber(0.5))
-    ScopeInstance(instance, "p2", FuzzyNumber(0.7))
-    ScopeInstance(instance, "p3", FuzzyNumber(0.2))
+    val baseClass = Class(
+      name = "Base",
+      superClass = Some(nestedClass),
+      methods = List(
+        Method(
+          name = "baseMethod",
+          params = List(Parameter("p1", "double"), Parameter("p2", "double"), Parameter("p3", "double")),
+          body = ADD(ADD(Input("p1"), Input("p2")), Input("p3")) // p1 + p2 + p3
+        )
+      )
+    )
 
-    val result = Invoke(instance, methodName = "compositeMethod", argNames = List("p1", "p2", "p3")) //(0.5*0.7)+0.2
-    result shouldEqual FuzzyNumber(0.55)
+    val derivedClass = Class(
+      name = "Derived",
+      superClass = Some(baseClass),
+      methods = List(
+        Method(
+          name = "derivedMethod",
+          params = List(Parameter("p1", "double"), Parameter("p2", "double")),
+          body = XOR(Input("p1"), Input("p2"))
+        ),
+        Method(
+          name = "nestedMethod",
+          params = List(Parameter("p1", "double"), Parameter("p2", "double")),
+          body = ADD(Input("p1"), Input("p2"))
+        )
+      )
+    )
+
+    val instance = CreateInstance(derivedClass, "instanceNested")
+
+    ScopeInstance(instance, "p1", FuzzyNumber(0.6))
+    ScopeInstance(instance, "p2", FuzzyNumber(0.5))
+    ScopeInstance(instance, "p3", FuzzyNumber(0.4))
+
+    val overriddenNestedResult = Invoke(instance, methodName = "nestedMethod", argNames = List("p1", "p2"))
+    overriddenNestedResult shouldEqual FuzzyNumber(1.0) // 0.6 + 0.5 = 1.1, capped at 1.0
+
+    val baseResult = Invoke(instance, methodName = "baseMethod", argNames = List("p1", "p2", "p3"))
+    baseResult shouldEqual FuzzyNumber(1.0) // 0.6 + 0.5 + 0.4 = 1.5, capped at 1.0
+
+    val derivedResult = Invoke(instance, methodName = "derivedMethod", argNames = List("p1", "p2"))
+    derivedResult shouldEqual FuzzyNumber(0.1) // abs(0.6 - 0.5) = 0.1
+
+    val baseInstance = CreateInstance(baseClass, "instanceBase")
+
+    ScopeInstance(baseInstance, "p1", FuzzyNumber(0.6))
+    ScopeInstance(baseInstance, "p2", FuzzyNumber(0.5))
+
+    val originalNestedResult = Invoke(baseInstance, methodName = "nestedMethod", argNames = List("p1", "p2"))
+    originalNestedResult shouldEqual FuzzyNumber(0.3) // 0.6 * 0.5 = 0.3
   }
 
   it should "correctly evaluate inherited method in derived class" in {
@@ -113,7 +157,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(derivedClass)
+    val instance = CreateInstance(derivedClass, "instanceDerived")
 
     ScopeInstance(instance, "p1", FuzzyNumber(0.7))
     ScopeInstance(instance, "p2", FuzzyNumber(0.3))
@@ -138,7 +182,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseClass)
+    val instance = CreateInstance(baseClass, "instanceString")
 
     ScopeInstance(instance, "p2", FuzzyNumber(0.4))
 
@@ -162,7 +206,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceAdd")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.2), Element("x2", 0.7)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.5), Element("x3", 0.4)))))
@@ -192,7 +236,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceMult")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.6), Element("x2", 0.8)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.5), Element("x3", 0.4)))))
@@ -222,7 +266,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceXor")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.7), Element("x2", 0.3)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.4), Element("x3", 0.5)))))
@@ -252,7 +296,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceComplement")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.2), Element("x2", 0.8)))))
 
@@ -280,7 +324,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceAlphacut")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.5), Element("x2", 0.7), Element("x3", 0.9)))))
     ScopeInstance(instance, "alpha", FuzzyNumber(0.6))
@@ -306,7 +350,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceUnion")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.2), Element("x2", 0.7)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.6), Element("x3", 0.5)))))
@@ -336,7 +380,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceIntersection")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.5), Element("x2", 0.7)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.3), Element("x3", 0.8)))))
@@ -366,7 +410,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(baseSetClass)
+    val instance = CreateInstance(baseSetClass, "instanceComplement")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.2), Element("x2", 0.7)))))
 
@@ -394,7 +438,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(nestedSetClass)
+    val instance = CreateInstance(nestedSetClass, "instanceNested")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.5)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.3)))))
@@ -434,7 +478,7 @@ class FuzzyLogicDSLTest extends AnyFlatSpec with Matchers {
       )
     )
 
-    val instance = CreateInstance(derivedSetClass)
+    val instance = CreateInstance(derivedSetClass, "instanceDerive")
 
     ScopeInstance(instance, "setA", FuzzySetValue(FuzzySet("A", List(Element("x1", 0.4), Element("x2", 0.6)))))
     ScopeInstance(instance, "setB", FuzzySetValue(FuzzySet("B", List(Element("x1", 0.5), Element("x3", 0.7)))))
